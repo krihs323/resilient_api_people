@@ -8,10 +8,8 @@ import org.springframework.web.reactive.function.server.ServerResponse;
 
 import static org.springdoc.webflux.core.fn.SpringdocRouteBuilder.route;
 
-
 @Configuration
 public class RouterRest {
-
 
     @Bean
     public RouterFunction<ServerResponse> routerFunction(PersonHandlerImpl personHandler) {

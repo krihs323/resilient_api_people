@@ -10,6 +10,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -51,6 +53,17 @@ public class PersonUseCase implements PersonServicePort {
                 .then(personPersistencePort.save(person))
                 .flatMap(savedPerson ->
                         saveBootcamps(savedPerson.id(), person, messageId)
+                                .doOnSuccess(v ->
+                                    // Por cada bootcamp inscrito, enviamos la señal al reporte de manera que no sea bloqueante
+                                    person.personBootcampsList().forEach(pb ->
+                                            bootcampGateway.savePersonReport(pb.idBootcamp(), savedPerson, messageId)
+                                                    .subscribeOn(Schedulers.boundedElastic())
+                                                    .subscribe(
+                                                        success -> log.info("Report updated successfully"),
+                                                        error -> log.error("Error saving report: {}", error.getMessage())
+                                                    )
+                                    )
+                                )
                                 .then(Mono.just(savedPerson))
                 )
                 // Log de error global para identificar exactamente qué parte falla

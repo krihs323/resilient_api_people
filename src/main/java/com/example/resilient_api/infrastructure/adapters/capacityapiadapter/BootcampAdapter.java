@@ -6,9 +6,13 @@ import com.example.resilient_api.domain.exceptions.BusinessException;
 import com.example.resilient_api.domain.exceptions.TechnicalException;
 import com.example.resilient_api.domain.model.Bootcamp;
 import com.example.resilient_api.domain.model.CapacityBootcampSaveResult;
+import com.example.resilient_api.domain.model.Person;
 import com.example.resilient_api.domain.spi.BootcampGateway;
 import com.example.resilient_api.infrastructure.adapters.capacityapiadapter.dto.CapacityApiProperties;
 import com.example.resilient_api.infrastructure.adapters.capacityapiadapter.util.Constants;
+import com.example.resilient_api.infrastructure.entrypoints.dto.CapacityDTO;
+import com.example.resilient_api.infrastructure.entrypoints.dto.PersonDTO;
+import com.example.resilient_api.infrastructure.entrypoints.dto.UpdatePersonReportRequestDTO;
 import io.github.resilience4j.bulkhead.Bulkhead;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.Retry;
@@ -17,12 +21,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.TimeoutException;
 
 @Component
@@ -37,6 +43,9 @@ public class BootcampAdapter implements BootcampGateway {
 
     @Value("${bootcamp-api}")
     private String bootcampPath;
+
+    @Value("${report-api}")
+    private String reportPath;
 
     @Override
     //@CircuitBreaker(name = "capacityApiValidator", fallbackMethod = "fallback")
@@ -56,6 +65,33 @@ public class BootcampAdapter implements BootcampGateway {
                     //.transformDeferred(mono -> Mono.defer(() -> bulkhead.executeSupplier(() -> mono)))
                     .timeout(Duration.ofSeconds(15)) // Aumentamos el tiempo de espera a 15 segundos
                     .doOnError(e -> log.error("Error occurred in get bootcamp for messageId: {}", messageId, e));
+    }
+
+    @Override
+    public Mono<Void> savePersonReport(Long idBootcamp, Person savedPerson, String messageId) {
+        log.info("Starting save person into report: {} with messageId: {}", savedPerson, messageId);
+
+        PersonDTO personDTO = PersonDTO.builder().id(savedPerson.id())
+                .name(savedPerson.name())
+                .age(savedPerson.age())
+                .email(savedPerson.email()).build();
+
+        UpdatePersonReportRequestDTO request = new UpdatePersonReportRequestDTO(idBootcamp, personDTO);
+
+        return webClient.put()
+                .uri(reportPath + "report")
+                // Definir el tipo de contenido (JSON)
+                .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .header(Messages.MSJ_HEADER.getValue(), messageId)
+                // Pasar el objeto en el cuerpo (se serializa automáticamente a JSON)
+                .bodyValue(request)
+                .retrieve()
+                .toBodilessEntity()
+                .doOnError(e -> log.error("Fallo asíncrono: No se pudo reportar la persona {} en el bootcamp {}. Error: {}",
+                        savedPerson.id(), idBootcamp, e.getMessage()))
+                .doOnSuccess(v -> log.info("Reporte enviado exitosamente para bootcamp {}", idBootcamp))
+                .then();
     }
 
 
