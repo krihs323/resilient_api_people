@@ -38,7 +38,6 @@ public class PersonHandlerImpl {
     private final PersonServicePort personServicePort;
     private final PersonMapper personMapper;
     private final ObjectValidator objectValidator;
-    private final CapacitiesMapper capacitiesMapper;
 
     @Operation(
             summary = "Registrar una nueva persona",
@@ -57,7 +56,7 @@ public class PersonHandlerImpl {
             })
     public Mono<ServerResponse> createPerson(ServerRequest request) {
         String messageId = getMessageId(request);
-        return request.bodyToMono(PersonDTO.class).doOnNext(objectValidator::validate)
+        return request.bodyToMono(PersonDTO.class).flatMap(objectValidator::validate)
                 .flatMap(person -> personServicePort.registerPerson(personMapper.personDTOToPerson(person), messageId)
                         .doOnSuccess(savedPerson -> log.info("Person created successfully with messageId: {}", messageId))
                 )
